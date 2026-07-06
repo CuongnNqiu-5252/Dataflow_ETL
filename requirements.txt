@@ -1,0 +1,7 @@
+google-cloud-pubsub==2.19.0
+gunicorn==21.2.0
+fastapi
+uvicorn
+pydantic
+apache-beam[gcp]
+pymongo

@@ -1,0 +1,18 @@
+{
+    "name": "IoT Water Quality Pipeline",
+    "description": "Luồng xử lý dữ liệu cảm biến chất lượng nước từ Pub/Sub vào BigQuery bằng Apache Beam.",
+    "parameters": [
+        {
+            "name": "input_subscription",
+            "label": "Pub/Sub Input Subscription",
+            "helpText": "Đường dẫn đến Pub/Sub Subscription (VD: projects/my-project/subscriptions/iot-telemetry-sub)",
+            "isOptional": false
+        },
+        {
+            "name": "output_table",
+            "label": "BigQuery Output Table",
+            "helpText": "Bảng BigQuery đích để lưu dữ liệu (VD: my-project:water_quality_analytics.sensor_observations)",
+            "isOptional": false
+        }
+    ]
+}

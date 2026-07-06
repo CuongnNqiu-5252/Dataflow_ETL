@@ -1,0 +1,3 @@
+name: gcp-water-quality
+runtime: nodejs
+description: A Pulumi program to deploy GCP infrastruct

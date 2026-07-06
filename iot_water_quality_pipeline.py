@@ -1,0 +1,180 @@
+import argparse
+import json
+import logging
+from datetime import datetime
+
+import apache_beam as beam
+import apache_beam.pvalue as pvalue
+from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
+from apache_beam.transforms import window
+from apache_beam.io.mongodbio import WriteToMongoDB
+
+VALID_DATA_TAG = 'valid'
+DLQ_TAG = 'dlq'
+
+# 1. Hàm Parse dữ liệu JSON từ Pub/Sub
+class ParseIoTData(beam.DoFn):
+    """
+    Nhận chuỗi byte từ Pub/Sub, parse thành Dictionary (JSON).
+    Đồng thời gán khóa (key) là station_id để chuẩn bị cho việc gom nhóm.
+    """
+    def process(self, element):
+        try:
+            # Decode byte string thành dạng text và parse JSON
+            record = json.loads(element.decode('utf-8'))
+            
+            # Trích xuất các trường quan trọng (Ví dụ: Trạm, pH, Nhiệt độ)
+            station_id = record.get('station_id')
+            ph = float(record.get('PH', 0))
+            temp = float(record.get('temperature_c', 0))
+            
+            # Kiểm tra dữ liệu hợp lệ
+            if ph < 5 or ph > 9 or temp > 40:
+                error_record = {
+                    'error_message': 'Data out of range (pH or temp)',
+                    'raw_payload': element.decode('utf-8', errors='ignore'),
+                    'timestamp': datetime.utcnow().isoformat() + 'Z'
+                }
+                yield pvalue.TaggedOutput(DLQ_TAG, error_record)
+            else:
+                # Trả về một Tuple dạng (Key, Value) để tiện tính toán trung bình
+                # Key = station_id, Value = dict chứa các thông số
+                yield pvalue.TaggedOutput(VALID_DATA_TAG, (station_id, {'ph': ph, 'temp': temp}))
+        except Exception as e:
+            # Nếu dữ liệu bị lỗi (Corrupted), log lại để xử lý sau (Dead-letter pattern)
+            error_record = {
+                'error_message': str(e),
+                # decode lại một lần nữa với errors='ignore' để bắt dù payload là byte lỗi
+                'raw_payload': element.decode('utf-8', errors='ignore'),
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            }
+            yield pvalue.TaggedOutput(DLQ_TAG, error_record)
+
+# 2. Hàm Định dạng lại dữ liệu trước khi ném vào BigQuery
+class FormatForBigQuery(beam.DoFn):
+    """
+    Chuyển đổi dữ liệu đã được tổng hợp (tính trung bình) thành định dạng
+    phù hợp với Table Schema của BigQuery.
+    """
+    def process(self, element, window=beam.DoFn.WindowParam):
+        # Element lúc này có dạng: ('CT CANAL 001', {'ph': 7.2, 'temp': 29.5})
+        station_id, metrics = element
+        
+        # Lấy thời gian kết thúc của Cửa sổ (Window) làm timestamp cho bản ghi
+        window_end_time = window.end.to_utc_datetime().isoformat() + 'Z'
+        
+        # Tạo bản ghi chuẩn bị chèn vào BigQuery
+        row = {
+            'station_id': station_id,
+            'timestamp': window_end_time,
+            'PH': round(metrics['ph'], 2),
+            'temperature_c': round(metrics['temp'], 2),
+            'quality_flag': 'VALID' # Gắn cờ dữ liệu đã qua xử lý
+        }
+        yield row
+
+# 3. Hàm tính trung bình tùy chỉnh cho nhiều thông số cùng lúc
+class CalculateAverage(beam.CombineFn):
+    """
+    Hàm Combine tự định nghĩa để tính trung bình cộng cho cả pH và Nhiệt độ
+    cùng một lúc trong một Cửa sổ thời gian.
+    """
+    def create_accumulator(self):
+        # sum_ph, sum_temp, count
+        return (0.0, 0.0, 0)
+
+    def add_input(self, sum_count, input_dict):
+        (sum_ph, sum_temp, count) = sum_count
+        return sum_ph + input_dict['ph'], sum_temp + input_dict['temp'], count + 1
+
+    def merge_accumulators(self, accumulators):
+        sums_ph, sums_temp, counts = zip(*accumulators)
+        return sum(sums_ph), sum(sums_temp), sum(counts)
+
+    def extract_output(self, sum_count):
+        (sum_ph, sum_temp, count) = sum_count
+        if count == 0:
+            return {'ph': 0, 'temp': 0}
+        return {'ph': sum_ph / count, 'temp': sum_temp / count}
+
+def run():
+    # Khởi tạo các tham số dòng lệnh (Pipeline Options)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input_subscription', required=True, help='Pub/Sub Subscription ID')
+    parser.add_argument('--output_table', required=True, help='BigQuery Table (project:dataset.table)')
+    parser.add_argument('--mongo_uri', required=False, help='MongoDB Atlas Connection URI')
+    parser.add_argument('--mongo_db', required=False, help='MongoDB Database Name')
+    parser.add_argument('--mongo_collection', required=False, help='MongoDB Collection Name')
+    known_args, pipeline_args = parser.parse_known_args()
+
+    # Thiết lập tùy chọn cho Dataflow
+    pipeline_options = PipelineOptions(pipeline_args)
+    # BẮT BUỘC BẬT CHẾ ĐỘ STREAMING
+    pipeline_options.view_as(StandardOptions).streaming = True 
+
+    # Lược đồ (Schema) của bảng BigQuery
+    bq_schema = 'station_id:STRING, timestamp:TIMESTAMP, PH:FLOAT, temperature_c:FLOAT, quality_flag:STRING'
+    dlq_schema = 'error_message:STRING, raw_payload:STRING, timestamp:TIMESTAMP'
+    
+    # Khởi tạo Pipeline
+    with beam.Pipeline(options=pipeline_options) as p:
+        parsed_data = (
+            p
+            # BƯỚC 1: Đọc dữ liệu Real-time từ Pub/Sub
+            | 'Doc_Tu_PubSub' >> beam.io.ReadFromPubSub(subscription=known_args.input_subscription)
+            
+            # BƯỚC 2: Giải mã JSON và trích xuất dữ liệu
+            | 'Parse_JSON' >> beam.ParDo(ParseIoTData()).with_outputs(VALID_DATA_TAG, DLQ_TAG)
+        )
+
+        # Nhánh 1: Xử lý dữ liệu hợp lệ
+        valid_data_formatted = (
+            parsed_data[VALID_DATA_TAG]
+            # BƯỚC 3: WINDOWING (Tumbling Window)
+            | 'Gom_Cua_So_5_Phut' >> beam.WindowInto(window.FixedWindows(300))
+            
+            # BƯỚC 4: Tính trung bình cộng các chỉ số đo được trong 5 phút đó theo từng trạm
+            | 'Tinh_Trung_Binh' >> beam.CombinePerKey(CalculateAverage())
+            
+            # BƯỚC 5: Đóng gói lại thành định dạng BigQuery
+            | 'Chuan_Hoa_BigQuery' >> beam.ParDo(FormatForBigQuery())
+        )
+
+        # BƯỚC 6: Ghi dữ liệu vào BigQuery
+        (
+            valid_data_formatted
+            | 'Ghi_Vao_BigQuery' >> beam.io.WriteToBigQuery(
+                known_args.output_table,
+                schema=bq_schema,
+                write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+                create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
+            )
+        )
+
+        # BƯỚC 7: Ghi dữ liệu vào MongoDB Atlas (Nếu cấu hình được cung cấp)
+        if known_args.mongo_uri and known_args.mongo_db and known_args.mongo_collection:
+            (
+                valid_data_formatted
+                | 'Ghi_Vao_MongoDB' >> WriteToMongoDB(
+                    uri=known_args.mongo_uri,
+                    db=known_args.mongo_db,
+                    coll=known_args.mongo_collection
+                )
+            )
+
+        # Nhánh 2: Xử lý dữ liệu bị lỗi (Dead-Letter Queue)
+        (
+            parsed_data[DLQ_TAG]
+            | 'Ghi_Vao_Bang_Loi_DLQ' >> beam.io.WriteToBigQuery(
+                known_args.output_table + "_DLQ", # Tự động tạo bảng có hậu tố _DLQ
+                schema=dlq_schema,
+                write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+                create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
+            )
+        )
+
+        
+
+if __name__ == '__main__':
+    logging.getLogger().setLevel(logging.INFO)
+    run()

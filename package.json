@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "@pulumi/gcp": "^9.29.0",
+    "pulumi": "^3.250.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}
