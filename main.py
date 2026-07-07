@@ -15,6 +15,15 @@ app = FastAPI(
     title="Broker cho Data Engineering Pipeline",
     version = "1.0.0"
 )
+
+# Cấu hình CORS để cho phép các trang web frontend (như HTML simulator) gọi API mà không bị chặn
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Trong thực tế nên đổi thành domain cụ thể của bạn
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 PROJECT_ID = os.environ.get("PROJECT_ID", "n8nproject-461516")
 TOPIC_ID = os.environ.get("TOPIC_ID", "iot-telemetry-topic")
 API_SECRET_KEY = os.environ.get("API_SECRET_KEY", "mat-khau-bi-mat-esp32").strip()
