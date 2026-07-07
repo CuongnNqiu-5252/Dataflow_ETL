@@ -1,4 +1,4 @@
-name: Dataflow deploy to cloud
+name: Dataflow & Infra deploy
 
 on:
   push:
@@ -6,13 +6,8 @@ on:
       - main
 env:
   PROJECT_ID: ${{ secrets.PROJECT_ID }}
-  TOPIC_ID: ${{ secrets.TOPIC_ID }}
-  REGION: ${{ secrets.REGION }}
+  # BUCKET_NAME: Bucket dùng cho dataflow template. Nếu bucket này được quản lý bởi Pulumi, bạn NÊN tạo nó bằng tay hoặc giữ nguyên trạng thái cũ.
   BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
-  BQ_DATASET: ${{ secrets.BQ_DATASET }}
-  BQ_TABLE: ${{ secrets.BQ_TABLE }}
-  NETWORK: ${{ secrets.NETWORK }}
-  SUBNETWORK: ${{ secrets.SUBNETWORK }}
 
 jobs:
   deploy:
@@ -42,12 +37,32 @@ jobs:
       - name: Configure Docker Auth
         run: gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
 
-      - name: Deploy Dataflow Flex Template
+      - name: Build Dataflow Flex Template
         run: |
-          gcloud dataflow flex-template build gs://water-quality-dataflow-bucket-a26081e/templates/iot-pipeline-spec.json \
-            --image-gcr-path "asia-southeast1-docker.pkg.dev/n8nproject-461516/my-repo/iot-dataflow:v1" \
+          # Dùng github.sha làm mã phiên bản để Pulumi phát hiện được file bị thay đổi
+          gcloud dataflow flex-template build gs://${{ env.BUCKET_NAME }}/templates/iot-pipeline-spec-${{ github.sha }}.json \
+            --image-gcr-path "asia-southeast1-docker.pkg.dev/${{ env.PROJECT_ID }}/my-repo/iot-dataflow:${{ github.sha }}" \
             --sdk-language "PYTHON" \
             --flex-template-base-image "PYTHON3" \
             --metadata-file "metadata.json" \
             --py-path "." \
             --env "FLEX_TEMPLATE_PYTHON_PY_FILE=iot_water_quality_pipeline.py"
+
+      - name: Setup Node.js (For Pulumi)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install Pulumi dependencies
+        run: npm install
+
+      - name: Pulumi Up
+        uses: pulumi/actions@v3
+        with:
+          command: up
+          stack-name: dev
+        env:
+          # Cần thêm secret này trong Github để Pulumi có quyền chạy
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          # Biến này sẽ được index.ts đọc để biết phải chạy Template GCS Path nào
+          TEMPLATE_VERSION: ${{ github.sha }}

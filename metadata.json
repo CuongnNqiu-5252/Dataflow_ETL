@@ -9,10 +9,40 @@
             "isOptional": false
         },
         {
+            "name": "mongo_collection",
+            "label": "MongoDB Collection",
+            "helpText": "The MongoDB collection to write sensor data to.",
+            "isOptional": false
+        },
+        {
+            "name": "mongo_db",
+            "label": "MongoDB Database",
+            "helpText": "The MongoDB database name.",
+            "isOptional": false
+        },
+        {
             "name": "output_table",
             "label": "BigQuery Output Table",
             "helpText": "Bảng BigQuery đích để lưu dữ liệu (VD: my-project:water_quality_analytics.sensor_observations)",
             "isOptional": false
+        },
+        {
+            "name": "mongo_uri",
+            "label": "MongoDB URI",
+            "helpText": "URI kết nối MongoDB Atlas",
+            "isOptional": true
+        },
+        {
+            "name": "mongo_db",
+            "label": "MongoDB Database",
+            "helpText": "Tên Database trong MongoDB",
+            "isOptional": true
+        },
+        {
+            "name": "mongo_collection",
+            "label": "MongoDB Collection",
+            "helpText": "Tên Collection trong MongoDB",
+            "isOptional": true
         }
     ]
 }
