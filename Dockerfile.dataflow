@@ -1,0 +1,11 @@
+FROM gcr.io/dataflow-templates-base/python3-template-launcher-base:latest
+
+# Định nghĩa đường dẫn tới file chạy chính của Dataflow
+ENV FLEX_TEMPLATE_PYTHON_PY_FILE=/template/iot_water_quality_pipeline.py
+
+# Copy toàn bộ mã nguồn vào thư mục /template trong container
+COPY . /template/
+
+# Cài đặt các thư viện Python
+# (Nếu bạn có thêm thư viện nào ngoài Apache Beam, hãy đảm bảo chúng có trong requirements.txt)
+RUN pip install --no-cache-dir -r /template/requirements.txt

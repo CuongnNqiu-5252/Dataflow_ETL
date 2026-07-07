@@ -6,7 +6,6 @@ on:
       - main
 env:
   PROJECT_ID: ${{ secrets.PROJECT_ID }}
-  # BUCKET_NAME: Bucket dùng cho dataflow template. Nếu bucket này được quản lý bởi Pulumi, bạn NÊN tạo nó bằng tay hoặc giữ nguyên trạng thái cũ.
   BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
 
 jobs:
@@ -37,16 +36,20 @@ jobs:
       - name: Configure Docker Auth
         run: gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
 
-      - name: Build Dataflow Flex Template
+      - name: Build and Push Docker Image for Dataflow
         run: |
-          # Dùng github.sha làm mã phiên bản để Pulumi phát hiện được file bị thay đổi
+          IMAGE_PATH="asia-southeast1-docker.pkg.dev/${{ env.PROJECT_ID }}/my-repo/iot-dataflow:${{ github.sha }}"
+          docker build -t $IMAGE_PATH -f Dockerfile.dataflow .
+          docker push $IMAGE_PATH
+
+      - name: Build Dataflow Flex Template Spec (JSON)
+        run: |
+          IMAGE_PATH="asia-southeast1-docker.pkg.dev/${{ env.PROJECT_ID }}/my-repo/iot-dataflow:${{ github.sha }}"
+          # Thay vì dùng Cloud Build, ta dùng --image để trỏ thẳng tới Docker Image vừa build
           gcloud dataflow flex-template build gs://${{ env.BUCKET_NAME }}/templates/iot-pipeline-spec-${{ github.sha }}.json \
-            --image-gcr-path "asia-southeast1-docker.pkg.dev/${{ env.PROJECT_ID }}/my-repo/iot-dataflow:${{ github.sha }}" \
+            --image "$IMAGE_PATH" \
             --sdk-language "PYTHON" \
-            --flex-template-base-image "PYTHON3" \
-            --metadata-file "metadata.json" \
-            --py-path "." \
-            --env "FLEX_TEMPLATE_PYTHON_PY_FILE=iot_water_quality_pipeline.py"
+            --metadata-file "metadata.json"
 
       - name: Setup Node.js (For Pulumi)
         uses: actions/setup-node@v4
@@ -62,7 +65,5 @@ jobs:
           command: up
           stack-name: dev
         env:
-          # Cần thêm secret này trong Github để Pulumi có quyền chạy
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          # Biến này sẽ được index.ts đọc để biết phải chạy Template GCS Path nào
           TEMPLATE_VERSION: ${{ github.sha }}
