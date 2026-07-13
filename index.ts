@@ -82,7 +82,7 @@ const dataflowJob = new gcp.dataflow.FlexTemplateJob("water-quality-streaming-jo
 const pipelineErrorsMetric = new gcp.logging.Metric("pipeline-errors-metric", {
     name: "dataflow_pipeline_errors",
     // Lọc các log có từ khóa lỗi mà chúng ta đã định nghĩa trong file Python
-    filter: `resource.type="dataflow_step" AND severity>=WARNING AND (textPayload:"PIPELINE_PARSE_ERROR" OR textPayload:"SCHEMA_MISMATCH_OR_OUT_OF_RANGE")`,
+    filter: `resource.type="global" AND severity>=WARNING AND (textPayload:"PIPELINE_PARSE_ERROR" OR textPayload:"SCHEMA_MISMATCH_OR_OUT_OF_RANGE")`,
     description: "Đếm số lượng lỗi parse hoặc dữ liệu sai lệch từ Dataflow",
     metricDescriptor: {
         metricKind: "DELTA",
@@ -108,7 +108,7 @@ const alertPolicy = new gcp.monitoring.AlertPolicy("pipeline-error-alert", {
         displayName: "Số lỗi vượt quá 10 lần trong 5 phút",
         conditionThreshold: {
             // Liên kết với Metric vừa tạo ở trên
-            filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${pipelineErrorsMetric.name}" AND resource.type="dataflow_step"`,
+            filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${pipelineErrorsMetric.name}" AND resource.type="global"`,
             comparison: "COMPARISON_GT",
             thresholdValue: 10, // Ngưỡng cho phép (Ví dụ: 10 lỗi)
             duration: "0s",
