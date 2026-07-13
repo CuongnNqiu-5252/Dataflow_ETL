@@ -108,7 +108,7 @@ const alertPolicy = new gcp.monitoring.AlertPolicy("pipeline-error-alert", {
         displayName: "Số lỗi vượt quá 10 lần trong 5 phút",
         conditionThreshold: {
             // Liên kết với Metric vừa tạo ở trên
-            filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${pipelineErrorsMetric.name}"`,
+            filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${pipelineErrorsMetric.name}" AND resource.type="dataflow_step"`,
             comparison: "COMPARISON_GT",
             thresholdValue: 10, // Ngưỡng cho phép (Ví dụ: 10 lỗi)
             duration: "0s",
