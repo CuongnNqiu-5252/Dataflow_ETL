@@ -166,7 +166,7 @@ def run():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_subscription', required=True, help='Pub/Sub Subscription ID')
     parser.add_argument('--output_table', required=True, help='BigQuery Table (project:dataset.table)')
-    parser.add_argument('--mongo-uri-secret', required=False, help='MongoDB Atlas Connection URI')
+    parser.add_argument('--mongo_uri_secret', required=False, help='MongoDB Atlas Connection URI')
     parser.add_argument('--mongo_db', required=False, help='MongoDB Database Name')
     parser.add_argument('--mongo_collection', required=False, help='MongoDB Collection Name')
     parser.add_argument('--vertex_endpoint_id', required=False, help='Vertex AI Endpoint ID')
