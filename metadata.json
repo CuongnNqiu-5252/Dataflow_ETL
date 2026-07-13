@@ -21,9 +21,9 @@
             "isOptional": false
         },
         {
-            "name": "mongo_uri",
-            "label": "MongoDB URI",
-            "helpText": "URI kết nối MongoDB Atlas",
+            "name": "vertex_endpoint_id",
+            "label": "Vertex AI Endpoint ID",
+            "helpText": "ID của Vertex AI Endpoint dùng để dự đoán",
             "isOptional": true
         },
         {
@@ -36,6 +36,18 @@
             "name": "mongo_collection",
             "label": "MongoDB Collection",
             "helpText": "Tên Collection trong MongoDB",
+            "isOptional": true
+        },
+        {
+            "name": "vertex_project_id",
+            "label": "Vertex AI Project ID",
+            "helpText": "Project ID chứa Vertex AI Endpoint",
+            "isOptional": true
+        },
+        {
+            "name": "vertex_region",
+            "label": "Vertex AI Region",
+            "helpText": "Region của Vertex AI Endpoint (VD: us-central1)",
             "isOptional": true
         }
     ]

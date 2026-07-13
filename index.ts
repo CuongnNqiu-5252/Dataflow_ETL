@@ -9,6 +9,11 @@ const mongoUri = process.env.MONGODB_URI;
 const mongoDb = process.env.MONGO_DB || "DT_TWIN";
 const mongoCollection = process.env.MONGO_COLLECTION || "DT_TWIN_SENSOR";
 
+// Các biến cấu hình Vertex AI
+const vertexEndpointId = process.env.VERTEX_ENDPOINT_ID;
+const vertexProjectId = process.env.VERTEX_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
+const vertexRegion = process.env.VERTEX_REGION || "asia-southeast1";
+
 
 const dataflowBucket = new gcp.storage.Bucket("water-quality-dataflow-bucket", {
     location: "asia-southeast1", // Đặt tại Singapore để tối ưu độ trễ cho Việt Nam
@@ -42,6 +47,7 @@ const bqTable = new gcp.bigquery.Table("sensor_observations_table", {
         { name: "PH", type: "FLOAT", mode: "NULLABLE", description: "Độ pH trung bình" },
         { name: "temperature_c", type: "FLOAT", mode: "NULLABLE", description: "Nhiệt độ trung bình" },
         { name: "quality_flag", type: "STRING", mode: "NULLABLE", description: "Cờ đánh giá chất lượng dữ liệu" },
+        { name: "prediction_result", type: "STRING", mode: "NULLABLE", description: "Kết quả dự đoán AI" },
     ]),
     timePartitioning: { type: "DAY", field: "timestamp" },
     clusterings: ["station_id"],
@@ -62,6 +68,9 @@ const dataflowJob = new gcp.dataflow.FlexTemplateJob("water-quality-streaming-jo
         ...(mongoUri && { mongo_uri_secret: mongoUri }),
         ...(mongoDb && { mongo_db: mongoDb }),
         ...(mongoCollection && { mongo_collection: mongoCollection }),
+        ...(vertexEndpointId && { vertex_endpoint_id: vertexEndpointId }),
+        ...(vertexProjectId && { vertex_project_id: vertexProjectId }),
+        ...(vertexRegion && { vertex_region: vertexRegion }),
     },
     onDelete: "cancel",
 });
@@ -99,7 +108,7 @@ const alertPolicy = new gcp.monitoring.AlertPolicy("pipeline-error-alert", {
         displayName: "Số lỗi vượt quá 10 lần trong 5 phút",
         conditionThreshold: {
             // Liên kết với Metric vừa tạo ở trên
-            filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${pipelineErrorsMetric.name}" AND resource.type="global"`,
+            filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${pipelineErrorsMetric.name}" AND resource.type="dataflow_step"`,
             comparison: "COMPARISON_GT",
             thresholdValue: 10, // Ngưỡng cho phép (Ví dụ: 10 lỗi)
             duration: "0s",

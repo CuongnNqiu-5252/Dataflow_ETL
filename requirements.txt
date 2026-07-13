@@ -6,3 +6,4 @@ pydantic
 apache-beam[gcp]
 pymongo
 google-cloud-secret-manager>=2.16.0
+google-cloud-aiplatform>=1.35.0

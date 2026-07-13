@@ -66,13 +66,13 @@ class FormatForBigQuery(beam.DoFn):
         # Lấy thời gian kết thúc của Cửa sổ (Window) làm timestamp cho bản ghi
         window_end_time = window.end.to_utc_datetime().isoformat() + 'Z'
         
-        # Tạo bản ghi chuẩn bị chèn vào BigQuery
         row = {
             'station_id': station_id,
             'timestamp': window_end_time,
             'PH': round(metrics['ph'], 2),
             'temperature_c': round(metrics['temp'], 2),
-            'quality_flag': 'VALID' # Gắn cờ dữ liệu đã qua xử lý
+            'quality_flag': 'VALID', # Gắn cờ dữ liệu đã qua xử lý
+            'prediction_result': metrics.get('prediction_result', 'N/A')
         }
         yield row
 
@@ -128,6 +128,39 @@ class WriteToMongoDBSecurely(beam.DoFn):
         if self.client:
             self.client.close()
 
+from google.cloud import aiplatform
+
+class PredictWithVertexAI(beam.DoFn):
+    def __init__(self, project_id, region, endpoint_id):
+        self.project_id = project_id
+        self.region = region
+        self.endpoint_id = endpoint_id
+        self.endpoint = None
+
+    def setup(self):
+        # Khởi tạo client Vertex AI trên worker
+        aiplatform.init(project=self.project_id, location=self.region)
+        self.endpoint = aiplatform.Endpoint(self.endpoint_id)
+
+    def process(self, element):
+        station_id, metrics = element
+        try:
+            # Chuẩn bị dữ liệu đầu vào cho model (phụ thuộc vào model bạn deploy)
+            # Giả sử model nhận mảng 2 chiều [pH, temp]
+            instances = [[metrics['ph'], metrics['temp']]]
+            
+            # Gọi API dự đoán
+            prediction = self.endpoint.predict(instances=instances)
+            
+            # Lấy kết quả trả về
+            predicted_value = prediction.predictions[0]
+            metrics['prediction_result'] = str(predicted_value)
+        except Exception as e:
+            logging.error(f"VERTEX_AI_ERROR: Failed to predict. Reason: {e}")
+            metrics['prediction_result'] = "ERROR"
+            
+        yield (station_id, metrics)
+
 def run():
     # Khởi tạo các tham số dòng lệnh (Pipeline Options)
     parser = argparse.ArgumentParser()
@@ -136,6 +169,9 @@ def run():
     parser.add_argument('--mongo-uri-secret', required=False, help='MongoDB Atlas Connection URI')
     parser.add_argument('--mongo_db', required=False, help='MongoDB Database Name')
     parser.add_argument('--mongo_collection', required=False, help='MongoDB Collection Name')
+    parser.add_argument('--vertex_endpoint_id', required=False, help='Vertex AI Endpoint ID')
+    parser.add_argument('--vertex_project_id', required=False, help='Vertex AI Project ID')
+    parser.add_argument('--vertex_region', required=False, help='Vertex AI Region (e.g. us-central1)')
     known_args, pipeline_args = parser.parse_known_args()
 
     # Thiết lập tùy chọn cho Dataflow
@@ -144,7 +180,7 @@ def run():
     pipeline_options.view_as(StandardOptions).streaming = True 
 
     # Lược đồ (Schema) của bảng BigQuery
-    bq_schema = 'station_id:STRING, timestamp:TIMESTAMP, PH:FLOAT, temperature_c:FLOAT, quality_flag:STRING'
+    bq_schema = 'station_id:STRING, timestamp:TIMESTAMP, PH:FLOAT, temperature_c:FLOAT, quality_flag:STRING, prediction_result:STRING'
     dlq_schema = 'error_message:STRING, raw_payload:STRING, timestamp:TIMESTAMP'
     
     # Khởi tạo Pipeline
@@ -166,7 +202,21 @@ def run():
             
             # BƯỚC 4: Tính trung bình cộng các chỉ số đo được trong 5 phút đó theo từng trạm
             | 'Tinh_Trung_Binh' >> beam.CombinePerKey(CalculateAverage())
-            
+        )
+
+        # BƯỚC 4.5: Dự đoán bằng Vertex AI (Nếu có endpoint)
+        if known_args.vertex_endpoint_id:
+            valid_data_formatted = (
+                valid_data_formatted
+                | 'Du_Doan_VertexAI' >> beam.ParDo(PredictWithVertexAI(
+                    known_args.vertex_project_id,
+                    known_args.vertex_region,
+                    known_args.vertex_endpoint_id
+                ))
+            )
+
+        valid_data_formatted = (
+            valid_data_formatted
             # BƯỚC 5: Đóng gói lại thành định dạng BigQuery
             | 'Chuan_Hoa_BigQuery' >> beam.ParDo(FormatForBigQuery())
         )
