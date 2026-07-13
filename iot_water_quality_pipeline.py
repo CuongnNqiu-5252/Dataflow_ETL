@@ -237,13 +237,12 @@ def run():
         if known_args.mongo_uri_secret and known_args.mongo_db and known_args.mongo_collection:
             (
                 valid_data_formatted
-                | 'Ghi_Vao_MongoDB' >> WriteToMongoDBSecurely(
+                | 'Ghi_Vao_MongoDB' >> beam.ParDo(WriteToMongoDBSecurely(
                     project_id='n8nproject-461516',
                     secret_name=known_args.mongo_uri_secret,
                     db_name=known_args.mongo_db,
                     collection_name=known_args.mongo_collection
-
-                )
+                ))
             )
 
         # Nhánh 2: Xử lý dữ liệu bị lỗi (Dead-Letter Queue)
