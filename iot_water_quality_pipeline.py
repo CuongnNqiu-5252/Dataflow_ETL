@@ -130,7 +130,7 @@ def run():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_subscription', required=True, help='Pub/Sub Subscription ID')
     parser.add_argument('--output_table', required=True, help='BigQuery Table (project:dataset.table)')
-    parser.add_argument('--mongo_uri', required=False, help='MongoDB Atlas Connection URI')
+    parser.add_argument('--mongo-uri-secret', required=False, help='MongoDB Atlas Connection URI')
     parser.add_argument('--mongo_db', required=False, help='MongoDB Database Name')
     parser.add_argument('--mongo_collection', required=False, help='MongoDB Collection Name')
     known_args, pipeline_args = parser.parse_known_args()
@@ -180,11 +180,11 @@ def run():
         )
 
         # BƯỚC 7: Ghi dữ liệu vào MongoDB Atlas (Nếu cấu hình được cung cấp)
-        if known_args.mongo_uri and known_args.mongo_db and known_args.mongo_collection:
+        if known_args.mongo-uri-secret and known_args.mongo_db and known_args.mongo_collection:
             (
                 valid_data_formatted
                 | 'Ghi_Vao_MongoDB' >> WriteToMongoDB(
-                    uri=known_args.mongo_uri,
+                    uri=known_args.mongo-uri-secret,
                     db=known_args.mongo_db,
                     coll=known_args.mongo_collection
                 )
