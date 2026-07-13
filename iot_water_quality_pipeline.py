@@ -30,8 +30,10 @@ class ParseIoTData(beam.DoFn):
             
             # Kiểm tra dữ liệu hợp lệ
             if ph < 5 or ph > 9 or temp > 40:
+                error_msg = 'Data out of range (pH or temp)'
+                logging.warning(f"SCHEMA_MISMATCH_OR_OUT_OF_RANGE: {error_msg}. Payload: {element}")
                 error_record = {
-                    'error_message': 'Data out of range (pH or temp)',
+                    'error_message': error_msg,
                     'raw_payload': element.decode('utf-8', errors='ignore'),
                     'timestamp': datetime.utcnow().isoformat() + 'Z'
                 }
@@ -42,6 +44,7 @@ class ParseIoTData(beam.DoFn):
                 yield pvalue.TaggedOutput(VALID_DATA_TAG, (station_id, {'ph': ph, 'temp': temp}))
         except Exception as e:
             # Nếu dữ liệu bị lỗi (Corrupted), log lại để xử lý sau (Dead-letter pattern)
+            logging.error(f"PIPELINE_PARSE_ERROR: {str(e)}. Payload: {element}")
             error_record = {
                 'error_message': str(e),
                 # decode lại một lần nữa với errors='ignore' để bắt dù payload là byte lỗi
@@ -180,13 +183,16 @@ def run():
         )
 
         # BƯỚC 7: Ghi dữ liệu vào MongoDB Atlas (Nếu cấu hình được cung cấp)
-        if known_args.mongo-uri-secret and known_args.mongo_db and known_args.mongo_collection:
+        # Sửa lỗi cú pháp biến known_args: argparse tự động chuyển dấu gạch ngang '-' thành dấu gạch dưới '_'
+        if known_args.mongo_uri_secret and known_args.mongo_db and known_args.mongo_collection:
             (
                 valid_data_formatted
-                | 'Ghi_Vao_MongoDB' >> WriteToMongoDB(
-                    uri=known_args.mongo-uri-secret,
-                    db=known_args.mongo_db,
-                    coll=known_args.mongo_collection
+                | 'Ghi_Vao_MongoDB' >> WriteToMongoDBSecurely(
+                    project_id='n8nproject-461516',
+                    secret_name=known_args.mongo_uri_secret,
+                    db_name=known_args.mongo_db,
+                    collection_name=known_args.mongo_collection
+
                 )
             )
 

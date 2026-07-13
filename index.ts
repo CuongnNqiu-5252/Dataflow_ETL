@@ -59,11 +59,61 @@ const dataflowJob = new gcp.dataflow.FlexTemplateJob("water-quality-streaming-jo
     parameters: {
         input_subscription: iotSubscription.id,
         output_table: pulumi.interpolate`${bqDataset.project}:${bqDataset.datasetId}.${bqTable.tableId}`,
-        ...(mongoUri && { mongo_uri: mongoUri }),
+        ...(mongoUri && { mongo_uri_secret: mongoUri }),
         ...(mongoDb && { mongo_db: mongoDb }),
         ...(mongoCollection && { mongo_collection: mongoCollection }),
     },
     onDelete: "cancel",
+});
+// ============================================================================
+// GIÁM SÁT & KIỂM TOÁN TỰ ĐỘNG BẰNG CLOUD LOGGING / MONITORING
+// ============================================================================
+
+// 1. Tạo Log-based Metric để đếm số lượng lỗi Pipeline (Parse Error hoặc Schema Mismatch)
+const pipelineErrorsMetric = new gcp.logging.Metric("pipeline-errors-metric", {
+    name: "dataflow_pipeline_errors",
+    // Lọc các log có từ khóa lỗi mà chúng ta đã định nghĩa trong file Python
+    filter: `resource.type="dataflow_step" AND severity>=WARNING AND (textPayload:"PIPELINE_PARSE_ERROR" OR textPayload:"SCHEMA_MISMATCH_OR_OUT_OF_RANGE")`,
+    description: "Đếm số lượng lỗi parse hoặc dữ liệu sai lệch từ Dataflow",
+    metricDescriptor: {
+        metricKind: "DELTA",
+        valueType: "INT64",
+    },
+});
+
+// 2. Kênh thông báo (Notification Channel) - Ở đây dùng Email
+// (Với Zalo/SMS bạn sẽ cần dùng type = "webhook_tokenauth" trỏ tới API trung gian)
+const emailChannel = new gcp.monitoring.NotificationChannel("alert-email", {
+    type: "email",
+    labels: {
+        email_address: "cngo98279@gmail.com", // Đổi thành Email của đội vận hành
+    },
+    description: "Kênh thông báo lỗi Dataflow khẩn cấp",
+});
+
+// 3. Chính sách cảnh báo (Alert Policy)
+const alertPolicy = new gcp.monitoring.AlertPolicy("pipeline-error-alert", {
+    displayName: "Cảnh báo Lỗi Dataflow Pipeline - Vượt ngưỡng",
+    combiner: "OR",
+    conditions: [{
+        displayName: "Số lỗi vượt quá 10 lần trong 5 phút",
+        conditionThreshold: {
+            // Liên kết với Metric vừa tạo ở trên
+            filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${pipelineErrorsMetric.name}" AND resource.type="dataflow_step"`,
+            comparison: "COMPARISON_GT",
+            thresholdValue: 10, // Ngưỡng cho phép (Ví dụ: 10 lỗi)
+            duration: "0s",
+            aggregations: [{
+                alignmentPeriod: "300s", // Cửa sổ theo dõi: 5 phút
+                crossSeriesReducer: "REDUCE_SUM",
+                perSeriesAligner: "ALIGN_DELTA",
+            }],
+        },
+    }],
+    notificationChannels: [emailChannel.id],
+    alertStrategy: {
+        autoClose: "1800s", // Tự động đóng cảnh báo sau 30 phút nếu không có lỗi mới
+    },
 });
 
 export const bucketUrl = pulumi.interpolate`gs://${dataflowBucket.name}`;
