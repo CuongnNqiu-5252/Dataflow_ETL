@@ -9,15 +9,9 @@
             "isOptional": false
         },
         {
-            "name": "mongo_collection",
-            "label": "MongoDB Collection",
-            "helpText": "The MongoDB collection to write sensor data to.",
-            "isOptional": false
-        },
-        {
-            "name": "mongo_db",
-            "label": "MongoDB Database",
-            "helpText": "The MongoDB database name.",
+            "name": "mongo_uri_secret",
+            "label": "MongoDB URI Secret",
+            "helpText": "Google Secret Manager secret ID containing the MongoDB connection URI.",
             "isOptional": false
         },
         {
