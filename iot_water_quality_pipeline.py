@@ -96,6 +96,34 @@ class CalculateAverage(beam.CombineFn):
         if count == 0:
             return {'ph': 0, 'temp': 0}
         return {'ph': sum_ph / count, 'temp': sum_temp / count}
+class WriteToMongoDBSecurely(beam.DoFn):
+    def __init__(self, project_id, secret_name, db_name, collection_name):
+        self.project_id = project_id
+        self.secret_name = secret_name
+        self.db_name = db_name
+        self.collection_name = collection_name
+        self.client = None
+    # Khởi tạo kết nối và gọi Secret Manager trên mỗi worker
+    def setup(self):
+        # 1. Gọi Secret Manager API
+        client = secretmanager.SecretManagerServiceClient()
+        secret_path = f"projects/{self.project_id}/secrets/{self.secret_name}/versions/latest"
+        
+        # 2. Lấy Mongo URI từ Secret Manager vào bộ nhớ tạm thời
+        response = client.access_secret_version(request={"name": secret_path})
+        mongo_uri = response.payload.data.decode("UTF-8")
+        
+        # 3. Khởi tạo connection 
+        self.client = pymongo.MongoClient(mongo_uri)
+        self.db = self.client[self.db_name]
+        self.collection = self.db[self.collection_name]
+    def process(self, element):
+        # Ghi dữ liệu vào MongoDB
+        self.collection.insert_one(element)
+    # Đóng kết nối và giải phóng bộ nhớ sau khi Worker xử lý xong
+    def teardown(self):
+        if self.client:
+            self.client.close()
 
 def run():
     # Khởi tạo các tham số dòng lệnh (Pipeline Options)
