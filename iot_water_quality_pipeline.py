@@ -108,16 +108,18 @@ class WriteToMongoDBSecurely(beam.DoFn):
         self.client = None
     # Khởi tạo kết nối và gọi Secret Manager trên mỗi worker
     def setup(self):
-        from google.cloud import secretmanager
         import pymongo
         
-        # 1. Gọi Secret Manager API
-        client = secretmanager.SecretManagerServiceClient()
-        secret_path = f"projects/{self.project_id}/secrets/{self.secret_name}/versions/latest"
-        
-        # 2. Lấy Mongo URI từ Secret Manager vào bộ nhớ tạm thời
-        response = client.access_secret_version(request={"name": secret_path})
-        mongo_uri = response.payload.data.decode("UTF-8")
+        # Nếu người dùng truyền thẳng chuỗi kết nối bắt đầu bằng 'mongodb' (như trên Github Secrets)
+        if self.secret_name.startswith('mongodb'):
+            mongo_uri = self.secret_name
+        else:
+            # Ngược lại, gọi Secret Manager API để lấy chuỗi kết nối
+            from google.cloud import secretmanager
+            client = secretmanager.SecretManagerServiceClient()
+            secret_path = f"projects/{self.project_id}/secrets/{self.secret_name}/versions/latest"
+            response = client.access_secret_version(request={"name": secret_path})
+            mongo_uri = response.payload.data.decode("UTF-8")
         
         # 3. Khởi tạo connection 
         self.client = pymongo.MongoClient(mongo_uri)
