@@ -11,7 +11,7 @@ REGION = "asia-southeast1"
 
 # Tên bucket trên Cloud Storage (Phải là duy nhất trên toàn cầu)
 BUCKET_NAME = f"water-quality-models-{PROJECT_ID}"
-MODEL_FILE_NAME = "anomaly_model.pkl"
+MODEL_FILE_NAME = "anomaly_model.joblib"
 
 # Tên model và endpoint khi hiển thị trên Vertex AI
 MODEL_DISPLAY_NAME = "water_quality_anomaly_model"
@@ -33,7 +33,7 @@ def upload_to_gcs(bucket_name, source_file_name):
         
     # Vertex AI yêu cầu file phải có tên chính xác là 'model.pkl' hoặc 'model.joblib'
     # khi dùng container có sẵn của scikit-learn.
-    destination_blob_name = f"v1/model.pkl" 
+    destination_blob_name = f"v1/model.joblib" 
     blob = bucket.blob(destination_blob_name)
     
     print(f"Đang upload {source_file_name} lên gs://{bucket_name}/{destination_blob_name}...")
@@ -49,12 +49,12 @@ def deploy_to_vertex(gcs_artifact_uri):
     aiplatform.init(project=PROJECT_ID, location=REGION)
     
     # 1. Upload (Đăng ký) Model vào Registry
-    # Dùng container có sẵn của Google cho scikit-learn
+    # Dùng container có sẵn của Google cho scikit-learn (phiên bản 1.3 hỗ trợ Python 3.10)
     print(f"Đang đăng ký model từ {gcs_artifact_uri}...")
     model = aiplatform.Model.upload(
         display_name=MODEL_DISPLAY_NAME,
         artifact_uri=gcs_artifact_uri,
-        serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-0:latest" 
+        serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-3:latest" 
     )
     print(f"✅ Đăng ký model thành công! Model ID: {model.name}")
     

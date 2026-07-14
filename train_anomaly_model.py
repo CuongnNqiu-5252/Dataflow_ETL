@@ -74,12 +74,13 @@ def test_model(model):
     print("\nKết quả dự đoán thử nghiệm:")
     print(test_data.to_string(index=False))
 
-def save_model(model, filename='model.pkl'):
+def save_model(model, filename='anomaly_model.joblib'):
     """
     Lưu mô hình ra file để sau này có thể load lên Vertex AI.
+    Sử dụng protocol=4 để tương thích với các phiên bản Python cũ trên container Vertex AI.
     """
     logging.info(f"Đang lưu mô hình vào file {filename}...")
-    joblib.dump(model, filename)
+    joblib.dump(model, filename, protocol=4)
     logging.info("Lưu mô hình thành công.")
 
 if __name__ == "__main__":
@@ -95,10 +96,10 @@ if __name__ == "__main__":
     test_model(anomaly_model)
     
     # 4. Lưu mô hình
-    save_model(anomaly_model, 'anomaly_model.pkl')
+    save_model(anomaly_model, 'anomaly_model.joblib')
     
     logging.info("-" * 40)
     logging.info("TIẾP THEO:")
-    logging.info("1. File 'anomaly_model.pkl' đã được tạo.")
+    logging.info("1. File 'anomaly_model.joblib' đã được tạo.")
     logging.info("2. Để sử dụng trong Vertex AI, bạn cần upload file này lên Google Cloud Storage (GCS).")
     logging.info("3. Đăng ký mô hình trong Vertex AI Model Registry và tạo Endpoint.")
