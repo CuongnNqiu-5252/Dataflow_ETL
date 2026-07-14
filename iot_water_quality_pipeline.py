@@ -28,9 +28,9 @@ class ParseIoTData(beam.DoFn):
             ph = float(record.get('PH', 0))
             temp = float(record.get('temperature_c', 0))
             
-            # Kiểm tra dữ liệu hợp lệ
-            if ph < 5 or ph > 9 or temp > 40:
-                error_msg = 'Data out of range (pH or temp)'
+            # Kiểm tra lỗi cảm biến phần cứng (giới hạn vật lý)
+            if ph < 0 or ph > 14 or temp < -50 or temp > 100:
+                error_msg = 'HARDWARE ERROR: Vượt quá giới hạn vật lý của cảm biến'
                 logging.warning(f"SCHEMA_MISMATCH_OR_OUT_OF_RANGE: {error_msg}. Payload: {element}")
                 error_record = {
                     'error_message': error_msg,
@@ -108,6 +108,9 @@ class WriteToMongoDBSecurely(beam.DoFn):
         self.client = None
     # Khởi tạo kết nối và gọi Secret Manager trên mỗi worker
     def setup(self):
+        from google.cloud import secretmanager
+        import pymongo
+        
         # 1. Gọi Secret Manager API
         client = secretmanager.SecretManagerServiceClient()
         secret_path = f"projects/{self.project_id}/secrets/{self.secret_name}/versions/latest"
