@@ -110,8 +110,8 @@ class WriteToMongoDBSecurely(beam.DoFn):
     def setup(self):
         import pymongo
         
-        # Nếu người dùng truyền thẳng chuỗi kết nối bắt đầu bằng 'mongodb' (như trên Github Secrets)
-        if self.secret_name.startswith('mongodb'):
+        # Nếu người dùng truyền thẳng chuỗi kết nối bắt đầu bằng 'mongodb://' hoặc 'mongodb+srv://'
+        if self.secret_name.startswith('mongodb://') or self.secret_name.startswith('mongodb+srv://'):
             mongo_uri = self.secret_name
         else:
             # Ngược lại, gọi Secret Manager API để lấy chuỗi kết nối
