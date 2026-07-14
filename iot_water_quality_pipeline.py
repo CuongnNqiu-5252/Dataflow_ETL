@@ -127,7 +127,11 @@ class WriteToMongoDBSecurely(beam.DoFn):
         self.collection = self.db[self.collection_name]
     def process(self, element):
         # Ghi dữ liệu vào MongoDB
-        self.collection.insert_one(element)
+        # LƯU Ý QUAN TRỌNG: Phải dùng element.copy() vì PyMongo sẽ tự động chèn thêm trường '_id' (kiểu ObjectId)
+        # vào dictionary. Nếu không copy, nó sẽ làm biến đổi dictionary gốc, khiến luồng BigQuery
+        # chạy song song bị lỗi "ObjectId is not JSON serializable".
+        self.collection.insert_one(element.copy())
+        
     # Đóng kết nối và giải phóng bộ nhớ sau khi Worker xử lý xong
     def teardown(self):
         if self.client:
